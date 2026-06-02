@@ -240,7 +240,10 @@ app.post('/api/init-db', async (req, res) => {
   }
 });
 
-// Home page - served by express.static from public/index.html
+// Home page
+app.get('/', (req, res) => {
+  res.sendFile(require('path').join(__dirname, 'public', 'index.html'));
+});
 
 // 404 handler
 app.use((req, res) => {
