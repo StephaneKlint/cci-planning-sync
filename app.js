@@ -278,9 +278,14 @@ app.get('/api/planning/:id/collaborators', (req, res) => {
   });
 });
 
-// Home page
+// Home page - Frontend de test
 app.get('/', (req, res) => {
   res.sendFile(require('path').join(__dirname, 'public', 'index.html'));
+});
+
+// App intégrée - CCI Planning 2026
+app.get('/app', (req, res) => {
+  res.sendFile(require('path').join(__dirname, 'public', 'app.html'));
 });
 
 // 404 handler
