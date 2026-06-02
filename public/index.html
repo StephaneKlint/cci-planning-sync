@@ -296,6 +296,7 @@
       </div>
 
       <div class="btn-group">
+        <button class="btn" onclick="testModification()">🧪 Tester Modification</button>
         <button class="btn" onclick="reloadPlanning()">🔄 Recharger</button>
         <button class="btn" onclick="backToList()">← Retour</button>
       </div>
@@ -463,6 +464,45 @@
       collaborators.clear();
       updateCollaborators();
       loadPlannings();
+    }
+
+    async function testModification() {
+      if (!currentPlanningId) return;
+
+      try {
+        // Fetch current planning
+        const response = await fetch(`/api/planning/${currentPlanningId}`);
+        const planning = await response.json();
+
+        // Add a test phase
+        const newPhase = {
+          id: `phase-test-${Date.now()}`,
+          name: `Test Phase ${new Date().toLocaleTimeString()}`,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0]
+        };
+
+        planning.data.phases = planning.data.phases || [];
+        planning.data.phases.push(newPhase);
+
+        // Get version from history
+        const historyResp = await fetch(`/api/planning/${currentPlanningId}/history`);
+        const history = await historyResp.json();
+        const newVersion = (history.length > 0 ? Math.max(...history.map(h => h.version)) : 0) + 1;
+
+        // Emit modification via WebSocket
+        socket.emit('planning-modified', {
+          planningId: currentPlanningId,
+          version: newVersion,
+          device: deviceId,
+          data: planning.data
+        });
+
+        showToast(`✅ Modification envoyée (v${newVersion})`);
+        setTimeout(() => reloadPlanning(), 500);
+      } catch (err) {
+        showToast(`Erreur: ${err.message}`, true);
+      }
     }
 
     // Initial load
