@@ -24,14 +24,14 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Test DB connection
+// Test DB connection and initialize tables
 if (process.env.DATABASE_URL) {
-  pool.query('SELECT NOW()', (err) => {
+  pool.query('SELECT NOW()', async (err) => {
     if (err) {
       console.error('[DB] Connection failed:', err.message);
     } else {
       console.log('[DB] Connected successfully');
-      initDatabase();
+      await initDatabase();
     }
   });
 }
@@ -221,12 +221,22 @@ app.get('/api/planning/:id/history', async (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     database: process.env.DATABASE_URL ? 'configured' : 'not configured',
     websocket: 'ready'
   });
+});
+
+// Initialize database tables (force initialization)
+app.post('/api/init-db', async (req, res) => {
+  try {
+    await initDatabase();
+    res.json({ success: true, message: 'Database initialized' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Home page
