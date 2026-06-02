@@ -2,8 +2,7 @@
   "name": "cci-planning-sync",
   "version": "1.0.0",
   "description": "Real-time collaborative planning application with WebSocket sync and PostgreSQL",
-  "main": "server.js",
-  "type": "module",
+  "main": "api/index.js",
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
