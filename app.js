@@ -245,6 +245,39 @@ app.post('/api/init-db', async (req, res) => {
   }
 });
 
+// Track active collaborators (polling fallback for Vercel serverless)
+const activeCollaborators = new Map(); // planningId -> Set of deviceIds
+
+app.post('/api/planning/:id/join', (req, res) => {
+  const { planningId, deviceId } = req.body;
+  if (!activeCollaborators.has(planningId)) {
+    activeCollaborators.set(planningId, new Set());
+  }
+  activeCollaborators.get(planningId).add(deviceId);
+
+  // Auto-cleanup after 30 seconds of inactivity
+  setTimeout(() => {
+    if (activeCollaborators.has(planningId)) {
+      activeCollaborators.get(planningId).delete(deviceId);
+    }
+  }, 30000);
+
+  res.json({
+    success: true,
+    collaborators: Array.from(activeCollaborators.get(planningId)),
+    count: activeCollaborators.get(planningId).size
+  });
+});
+
+app.get('/api/planning/:id/collaborators', (req, res) => {
+  const planningId = req.params.id;
+  const collaborators = activeCollaborators.get(planningId);
+  res.json({
+    collaborators: collaborators ? Array.from(collaborators) : [],
+    count: collaborators ? collaborators.size : 0
+  });
+});
+
 // Home page
 app.get('/', (req, res) => {
   res.sendFile(require('path').join(__dirname, 'public', 'index.html'));

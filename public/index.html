@@ -335,12 +335,12 @@
       updateStatus('Déconnecté', false);
     });
 
+    // Socket.IO events
     socket.on('collaborator-joined', (data) => {
       if (data.deviceId !== deviceId) {
         collaborators.add(data.deviceId);
         showToast(`${data.deviceId.substring(0, 15)}... a rejoint`);
       }
-      // Update collaborator count from server
       document.getElementById('collaboratorCount').textContent = `${data.count} collaborateur${data.count > 1 ? 's' : ''}`;
       updateCollaborators();
     });
@@ -362,6 +362,13 @@
     socket.on('sync-error', (error) => {
       showToast(`❌ Error: ${error.error}`, true);
     });
+
+    // Polling fallback if WebSocket fails
+    setInterval(() => {
+      if (currentPlanningId && socket.connected) {
+        reloadPlanning();
+      }
+    }, 3000); // Poll every 3 seconds
 
     // UI Functions
     function updateStatus(text, isConnected) {
@@ -417,10 +424,40 @@
 
     async function selectPlanning(planningId) {
       currentPlanningId = planningId;
-      socket.emit('join-planning', { planningId, deviceId });
+
+      // Register as collaborator via HTTP polling (Vercel serverless fallback)
+      try {
+        const response = await fetch(`/api/planning/${planningId}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planningId, deviceId })
+        });
+        const result = await response.json();
+        document.getElementById('collaboratorCount').textContent =
+          `${result.count} collaborateur${result.count > 1 ? 's' : ''}`;
+      } catch (err) {
+        console.error('Could not register as collaborator:', err);
+      }
+
       showToast(`📂 Chargement du planning ${planningId}...`);
       updateCollaborators();
       await reloadPlanning();
+
+      // Poll for collaborator updates every 2 seconds
+      const pollInterval = setInterval(async () => {
+        if (currentPlanningId !== planningId) {
+          clearInterval(pollInterval);
+          return;
+        }
+        try {
+          const response = await fetch(`/api/planning/${planningId}/collaborators`);
+          const result = await response.json();
+          document.getElementById('collaboratorCount').textContent =
+            `${result.count} collaborateur${result.count > 1 ? 's' : ''}`;
+        } catch (err) {
+          // Silently ignore polling errors
+        }
+      }, 2000);
     }
 
     async function reloadPlanning() {
