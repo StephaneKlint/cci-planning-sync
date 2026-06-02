@@ -2370,7 +2370,17 @@ function getActivePlanningName() {
   await initIndexedDB();
   console.log('[Persistence] IndexedDB initialized');
 
-  // Load state (will use old localStorage for now, will sync to IndexedDB on first save)
+  // ===== NEW: Sync plannings from API BEFORE loading state =====
+  try {
+    const synced = await syncPlanningsFromAPI();
+    if (synced) {
+      console.log('[Startup] ✅ Plannings loaded from API');
+    }
+  } catch (err) {
+    console.warn('[Startup] ⚠️ API sync failed (will use local data):', err.message);
+  }
+
+  // Load state (will now use plannings loaded from API, or fall back to localStorage)
   state = loadState();
 
   // FIX: Set state.id to currentPlanningId so sync mechanism can use it
