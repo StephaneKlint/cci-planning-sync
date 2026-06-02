@@ -336,8 +336,12 @@
     });
 
     socket.on('collaborator-joined', (data) => {
-      collaborators.add(data.deviceId);
-      showToast(`${data.deviceId.substring(0, 15)}... a rejoint`);
+      if (data.deviceId !== deviceId) {
+        collaborators.add(data.deviceId);
+        showToast(`${data.deviceId.substring(0, 15)}... a rejoint`);
+      }
+      // Update collaborator count from server
+      document.getElementById('collaboratorCount').textContent = `${data.count} collaborateur${data.count > 1 ? 's' : ''}`;
       updateCollaborators();
     });
 

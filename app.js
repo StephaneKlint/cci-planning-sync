@@ -94,11 +94,16 @@ io.on('connection', (socket) => {
   socket.on('join-planning', ({ planningId, deviceId }) => {
     socket.join(`planning-${planningId}`);
     connectedUsers.set(socket.id, { planningId, deviceId });
-    io.to(`planning-${planningId}`).emit('collaborator-joined', { 
-      deviceId, 
-      count: connectedUsers.size 
+
+    // Count users in this specific planning room
+    const roomSockets = io.sockets.adapter.rooms.get(`planning-${planningId}`);
+    const countInRoom = roomSockets ? roomSockets.size : 0;
+
+    io.to(`planning-${planningId}`).emit('collaborator-joined', {
+      deviceId,
+      count: countInRoom
     });
-    console.log(`[WS] ${deviceId} joined planning ${planningId}`);
+    console.log(`[WS] ${deviceId} joined planning ${planningId} (${countInRoom} users in room)`);
   });
 
   socket.on('planning-modified', async ({ planningId, version, device, data }) => {
