@@ -208,6 +208,68 @@ app.post('/api/planning', async (req, res) => {
   }
 });
 
+// Import planning from JSON backup
+app.post('/api/planning/import', async (req, res) => {
+  try {
+    const planningData = req.body;
+
+    // Validate structure
+    if (!planningData || typeof planningData !== 'object') {
+      return res.status(400).json({ error: 'Invalid planning data' });
+    }
+
+    // Generate or use existing ID
+    const { v4: uuidv4 } = require('uuid');
+    const planningId = planningData.id || `pl_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const planningName = planningData.name || `Planning ${new Date().toLocaleDateString()}`;
+
+    // Prepare data for storage
+    const dataToStore = {
+      id: planningId,
+      name: planningName,
+      domains: planningData.domains || [],
+      projects: planningData.projects || [],
+      roles: planningData.roles || [],
+      responsables: planningData.responsables || [],
+      users: planningData.users || [],
+      hiddenProjects: planningData.hiddenProjects || [],
+      closedPeriods: planningData.closedPeriods || [],
+      holidaysEnabled: planningData.holidaysEnabled !== false,
+      customPhaseTypes: planningData.customPhaseTypes || [],
+      customMilestoneTypes: planningData.customMilestoneTypes || [],
+      autoCloseAfterMepDays: planningData.autoCloseAfterMepDays || 30,
+      __sync: {
+        lastModified: Date.now(),
+        lastSyncTime: null,
+        syncStatus: 'synced',
+        version: (planningData.__sync?.version || 0) + 1,
+        device: 'import',
+        sharePointUrl: null
+      }
+    };
+
+    // Store in PostgreSQL
+    if (process.env.DATABASE_URL) {
+      await pool.query(
+        'INSERT INTO plannings (id, name, data) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()',
+        [planningId, planningName, JSON.stringify(dataToStore)]
+      );
+    }
+
+    res.json({
+      success: true,
+      id: planningId,
+      name: planningName,
+      message: 'Planning imported successfully',
+      projectCount: (planningData.projects || []).length,
+      domainCount: (planningData.domains || []).length
+    });
+  } catch (err) {
+    console.error('[Import] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get planning history
 app.get('/api/planning/:id/history', async (req, res) => {
   try {
@@ -215,7 +277,7 @@ app.get('/api/planning/:id/history', async (req, res) => {
       return res.json([]);
     }
     const result = await pool.query(
-      `SELECT version, device, created_at FROM backups 
+      `SELECT version, device, created_at FROM backups
        WHERE planning_id = $1 ORDER BY version DESC LIMIT 100`,
       [req.params.id]
     );
