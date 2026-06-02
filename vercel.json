@@ -1,0 +1,27 @@
+{
+  "name": "cci-planning-sync",
+  "version": 2,
+  "buildCommand": "npm install",
+  "framework": "express",
+  "functions": {
+    "server.js": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "runtime": "nodejs18.x"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/server.js"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": {
+      "description": "PostgreSQL connection string from Neon"
+    },
+    "NODE_ENV": {
+      "default": "production"
+    }
+  }
+}
