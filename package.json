@@ -1,25 +1,14 @@
 {
   "name": "cci-planning-sync",
   "version": "1.0.0",
-  "description": "Real-time collaborative planning application with WebSocket sync and PostgreSQL",
-  "main": "api/index.js",
+  "description": "Real-time collaborative planning application",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js",
-    "build": "echo 'No build needed for this app'"
+    "build": "echo 'No build needed'"
   },
-  "keywords": ["planning", "collaboration", "realtime", "websocket"],
+  "keywords": ["planning", "collaboration", "realtime"],
   "author": "Stephane @ KLINT",
   "license": "MIT",
-  "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "pg": "^8.11.3",
-    "dotenv": "^16.3.1",
-    "cors": "^2.8.5",
-    "compression": "^1.7.4",
-    "uuid": "^9.0.1"
-  },
   "engines": {
     "node": "24.x"
   }
