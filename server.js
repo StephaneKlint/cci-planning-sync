@@ -244,3 +244,4 @@ httpServer.listen(PORT, () => {
 });
 
 export { app, io, pool };
+// Deploy trigger - Tue Jun  2 23:17:42 CEST 2026
