@@ -236,12 +236,14 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`[Server] Running on port ${PORT}`);
-  console.log(`[Server] Environment: ${process.env.NODE_ENV}`);
-});
+// Start server (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 3000;
+  httpServer.listen(PORT, () => {
+    console.log(`[Server] Running on port ${PORT}`);
+    console.log(`[Server] Environment: ${process.env.NODE_ENV}`);
+  });
+}
 
-export { app, io, pool };
+export { app, httpServer, io, pool };
 // Deploy trigger - Tue Jun  2 23:17:42 CEST 2026
