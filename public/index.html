@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CCI Planning - Collaboration en temps réel</title>
-  <script src="/socket.io/socket.io.js"></script>
+  <title>CCI Planning - Collaboration Temps Réel</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -36,12 +36,7 @@
       align-items: center;
       font-size: 14px;
       color: #666;
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .status-dot {
@@ -68,45 +63,112 @@
       padding: 0 20px;
     }
 
-    .planning-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-      margin-bottom: 40px;
-    }
-
-    .planning-card {
+    .card {
       background: white;
       border-radius: 8px;
       padding: 20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .planning-selector {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .planning-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .planning-item {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
       cursor: pointer;
       transition: all 0.2s;
-      border-left: 4px solid #2563eb;
     }
 
-    .planning-card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      transform: translateY(-2px);
+    .planning-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-color: #2563eb;
     }
 
-    .planning-card h3 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
+    .planning-item.active {
+      border-color: #10b981;
+      background: #f0fdf4;
     }
 
-    .planning-card p {
-      color: #666;
-      font-size: 14px;
+    .planning-item h3 {
+      margin: 0 0 5px 0;
+      font-size: 16px;
+    }
+
+    .planning-item p {
+      font-size: 12px;
+      color: #999;
       margin: 0;
     }
 
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .section h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #555;
+    }
+
+    .items {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .item {
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+    }
+
     .collaborators {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #eee;
+      background: #f0f9ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 15px;
+      margin-top: 20px;
+    }
+
+    .collaborators h4 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #2563eb;
+    }
+
+    .collaborator-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .collaborator-badge {
+      background: #2563eb;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
       font-size: 12px;
-      color: #999;
     }
 
     .btn {
@@ -159,19 +221,24 @@
       }
     }
 
-    .loading {
-      text-align: center;
-      padding: 40px 20px;
-      color: #666;
-    }
-
-    .device-id {
+    .device-info {
       background: #f0f0f0;
-      padding: 8px 12px;
+      padding: 10px;
       border-radius: 4px;
       font-family: monospace;
-      font-size: 12px;
+      font-size: 11px;
       color: #666;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .details {
+        grid-template-columns: 1fr;
+      }
+      
+      .planning-selector {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -179,29 +246,66 @@
   <div class="header">
     <h1>🎯 CCI Planning 2026 - Collaboration Temps Réel</h1>
     <div class="status-bar">
-      <div class="status">
-        <div class="status-dot" id="statusDot"></div>
-        <span id="statusText">Connexion en cours...</span>
+      <div>
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connexion...</span>
       </div>
       <div id="collaboratorCount" style="color: #2563eb; font-weight: bold;"></div>
-      <div class="device-id" id="deviceId"></div>
+      <div class="device-info" id="deviceInfo">Device: -</div>
     </div>
   </div>
 
   <div class="container">
-    <div id="planningList" class="planning-list">
-      <div class="loading">Chargement des plannings...</div>
+    <div class="card">
+      <h2>📋 Plannings Disponibles</h2>
+      <div id="planningList" class="planning-list">
+        <div style="text-align: center; padding: 20px; color: #999;">Chargement...</div>
+      </div>
     </div>
 
-    <div class="btn-group">
-      <button class="btn" id="newPlanningBtn">+ Nouveau planning</button>
+    <div class="card" id="detailsCard" style="display: none;">
+      <h2 id="planningTitle">Planning Details</h2>
+      
+      <div class="details">
+        <div class="section">
+          <h3>📦 Projets</h3>
+          <div class="items" id="projectsList"></div>
+        </div>
+        <div class="section">
+          <h3>📅 Phases</h3>
+          <div class="items" id="phasesList"></div>
+        </div>
+      </div>
+
+      <div class="details" style="margin-top: 20px;">
+        <div class="section">
+          <h3>🎯 Jalons</h3>
+          <div class="items" id="jalonsList"></div>
+        </div>
+        <div class="section">
+          <h3>📊 Historique</h3>
+          <div class="items" id="historieList" style="font-size: 12px;"></div>
+        </div>
+      </div>
+
+      <div class="collaborators">
+        <h4>👥 Collaborateurs Connectés</h4>
+        <div class="collaborator-list" id="collaboratorsList">
+          <span style="color: #999;">Aucun collaborateur</span>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn" onclick="reloadPlanning()">🔄 Recharger</button>
+        <button class="btn" onclick="backToList()">← Retour</button>
+      </div>
     </div>
   </div>
 
   <div id="toastContainer"></div>
 
   <script>
-    // Device ID management
+    // Device ID
     const generateDeviceId = () => {
       let id = localStorage.getItem('deviceId');
       if (!id) {
@@ -212,44 +316,46 @@
     };
 
     const deviceId = generateDeviceId();
-    document.getElementById('deviceId').textContent = `Device: ${deviceId.substring(0, 20)}...`;
+    document.getElementById('deviceInfo').textContent = `Device: ${deviceId.substring(0, 20)}...`;
 
-    // WebSocket setup
+    // WebSocket
     const socket = io();
     let currentPlanningId = null;
-    let collaboratorCount = 0;
+    let collaborators = new Set();
 
-    // Connection status
+    // Socket events
     socket.on('connect', () => {
       updateStatus('Connecté', true);
+      console.log('✅ Connected:', socket.id);
       loadPlannings();
-      console.log('[WS] Connected:', socket.id);
     });
 
     socket.on('disconnect', () => {
       updateStatus('Déconnecté', false);
-      console.log('[WS] Disconnected');
     });
 
     socket.on('collaborator-joined', (data) => {
-      collaboratorCount = data.count;
-      if (currentPlanningId) {
-        showToast(`${data.deviceId} a rejoint le planning`);
-      }
+      collaborators.add(data.deviceId);
+      showToast(`${data.deviceId.substring(0, 15)}... a rejoint`);
+      updateCollaborators();
     });
 
     socket.on('collaborator-left', (data) => {
-      showToast(`${data.deviceId} a quitté le planning`);
+      collaborators.delete(data.deviceId);
+      showToast(`${data.deviceId.substring(0, 15)}... a quitté`);
+      updateCollaborators();
     });
 
     socket.on('planning-updated', (data) => {
-      console.log('[Sync] Planning updated:', data);
-      loadPlannings();
-      showToast(`✅ Synchronisé (v${data.version}) par ${data.device}`);
+      console.log('✅ Planning updated:', data);
+      if (data.planningId === currentPlanningId) {
+        reloadPlanning();
+        showToast(`✅ Synced (v${data.version}) from ${data.device.substring(0, 15)}`);
+      }
     });
 
     socket.on('sync-error', (error) => {
-      showToast(`❌ Erreur: ${error.error}`, true);
+      showToast(`❌ Error: ${error.error}`, true);
     });
 
     // UI Functions
@@ -265,7 +371,21 @@
       toast.className = isError ? 'toast error' : 'toast';
       toast.textContent = message;
       document.getElementById('toastContainer').appendChild(toast);
-      setTimeout(() => toast.remove(), 4000);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function updateCollaborators() {
+      const count = collaborators.size + 1;
+      document.getElementById('collaboratorCount').textContent = `${count} collaborateur${count > 1 ? 's' : ''}`;
+      
+      const list = document.getElementById('collaboratorsList');
+      if (collaborators.size === 0) {
+        list.innerHTML = '<span style="color: #999;">Que vous</span>';
+      } else {
+        list.innerHTML = Array.from(collaborators)
+          .map(d => `<div class="collaborator-badge">${d.substring(0, 20)}...</div>`)
+          .join('');
+      }
     }
 
     async function loadPlannings() {
@@ -275,15 +395,14 @@
 
         const list = document.getElementById('planningList');
         if (plannings.length === 0) {
-          list.innerHTML = '<div class="loading">Aucun planning trouvé. Créez-en un!</div>';
+          list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Aucun planning trouvé</div>';
           return;
         }
 
         list.innerHTML = plannings.map(p => `
-          <div class="planning-card" onclick="openPlanning('${p.id}')">
+          <div class="planning-item" onclick="selectPlanning('${p.id}')">
             <h3>${p.name}</h3>
             <p>Mis à jour: ${new Date(p.updated_at).toLocaleString('fr-FR')}</p>
-            <div class="collaborators" id="collabs-${p.id}">Collaborateurs: 0</div>
           </div>
         `).join('');
       } catch (err) {
@@ -291,45 +410,64 @@
       }
     }
 
-    function openPlanning(planningId) {
+    async function selectPlanning(planningId) {
       currentPlanningId = planningId;
       socket.emit('join-planning', { planningId, deviceId });
-      showToast(`📂 Ouverture du planning ${planningId}...`);
-      // TODO: Load planning data and show editor
+      showToast(`📂 Chargement du planning ${planningId}...`);
+      updateCollaborators();
+      await reloadPlanning();
     }
 
-    document.getElementById('newPlanningBtn').addEventListener('click', () => {
-      const name = prompt('Nom du nouveau planning:');
-      if (name) {
-        const id = `pl_${Date.now()}`;
-        fetch('/api/planning', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            name,
-            data: {
-              id,
-              name,
-              projects: [],
-              phases: [],
-              jalons: [],
-              __sync: {
-                version: 1,
-                device: deviceId,
-                lastModified: Date.now()
-              }
-            }
-          })
-        }).then(() => {
-          loadPlannings();
-          showToast(`✅ Planning "${name}" créé!`);
-        }).catch(err => showToast(`Erreur: ${err.message}`, true));
+    async function reloadPlanning() {
+      if (!currentPlanningId) return;
+
+      try {
+        const response = await fetch(`/api/planning/${currentPlanningId}`);
+        const planning = await response.json();
+
+        if (planning.error) {
+          showToast(planning.error, true);
+          return;
+        }
+
+        document.getElementById('planningTitle').textContent = `📋 ${planning.name}`;
+        document.getElementById('projectsList').innerHTML = planning.data.projects
+          ?.map(p => `<div class="item"><strong>${p.name}</strong> <span style="color: #999;">${p.id}</span></div>`)
+          .join('') || '<div style="color: #999;">Aucun projet</div>';
+
+        document.getElementById('phasesList').innerHTML = planning.data.phases
+          ?.map(p => `<div class="item"><strong>${p.name}</strong> <span style="color: #999;">${p.startDate}</span></div>`)
+          .join('') || '<div style="color: #999;">Aucune phase</div>';
+
+        document.getElementById('jalonsList').innerHTML = planning.data.jalons
+          ?.map(j => `<div class="item"><strong>${j.name}</strong> <span style="color: #999;">${j.date}</span></div>`)
+          .join('') || '<div style="color: #999;">Aucun jalon</div>';
+
+        // Load history
+        const historyResp = await fetch(`/api/planning/${currentPlanningId}/history`);
+        const history = await historyResp.json();
+        document.getElementById('historieList').innerHTML = history
+          ?.slice(0, 5)
+          .map(h => `<div class="item">v${h.version} by ${h.device?.substring(0, 15) || 'unknown'}...</div>`)
+          .join('') || '<div style="color: #999;">Aucun historique</div>';
+
+        document.getElementById('detailsCard').style.display = 'block';
+      } catch (err) {
+        showToast(`Erreur: ${err.message}`, true);
       }
-    });
+    }
+
+    function backToList() {
+      currentPlanningId = null;
+      document.getElementById('detailsCard').style.display = 'none';
+      collaborators.clear();
+      updateCollaborators();
+      loadPlannings();
+    }
 
     // Initial load
     loadPlannings();
+    updateCollaborators();
   </script>
 </body>
 </html>

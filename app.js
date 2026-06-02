@@ -17,6 +17,7 @@ const io = new SocketIOServer(httpServer, {
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(express.static('public')); // Serve static files from public/
 
 // PostgreSQL Connection Pool
 const pool = new Pool({
@@ -239,71 +240,7 @@ app.post('/api/init-db', async (req, res) => {
   }
 });
 
-// Home page
-app.get('/', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>CCI Planning - Ready!</title>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            padding: 40px;
-            text-align: center;
-            background: #f5f5f5;
-          }
-          h1 { color: #10b981; margin: 0; }
-          p { color: #666; margin: 20px 0; }
-          code {
-            background: #f0f0f0;
-            padding: 10px;
-            display: block;
-            margin: 20px 0;
-            border-radius: 4px;
-            font-family: monospace;
-            text-align: left;
-          }
-          .status { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-          .endpoints { text-align: left; margin-top: 20px; }
-          .endpoints h3 { margin-top: 15px; }
-          .endpoints ul { margin: 10px 0; }
-        </style>
-      </head>
-      <body>
-        <div class="status">
-          <h1>✅ CCI Planning Server is Ready!</h1>
-          <p>Express + Socket.IO + PostgreSQL</p>
-          <code>https://cci-planning-sync.vercel.app</code>
-          
-          <div class="endpoints">
-            <h3>📡 WebSocket Events</h3>
-            <ul>
-              <li><code>socket.emit('join-planning', {planningId, deviceId})</code></li>
-              <li><code>socket.emit('planning-modified', {planningId, version, device, data})</code></li>
-              <li><code>socket.on('planning-updated', data)</code></li>
-            </ul>
-            
-            <h3>🔌 API Endpoints</h3>
-            <ul>
-              <li><code>GET /api/plannings</code></li>
-              <li><code>POST /api/planning</code></li>
-              <li><code>GET /api/planning/:id</code></li>
-              <li><code>GET /api/planning/:id/history</code></li>
-              <li><code>GET /health</code></li>
-            </ul>
-            
-            <p style="margin-top: 30px; font-size: 14px; color: #999;">
-              Status: <strong style="color: #10b981;">LIVE</strong><br>
-              Database: <strong>${process.env.DATABASE_URL ? '✅ Connected' : '⚠️ Not configured'}</strong><br>
-              WebSocket: <strong style="color: #10b981;">✅ Ready</strong>
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `);
-});
+// Home page - served by express.static from public/index.html
 
 // 404 handler
 app.use((req, res) => {
