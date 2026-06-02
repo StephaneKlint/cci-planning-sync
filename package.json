@@ -2,13 +2,16 @@
   "name": "cci-planning-sync",
   "version": "1.0.0",
   "description": "Real-time collaborative planning application",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "build": "echo 'No build needed'"
   },
   "keywords": ["planning", "collaboration", "realtime"],
   "author": "Stephane @ KLINT",
   "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
   "engines": {
     "node": "24.x"
   }
