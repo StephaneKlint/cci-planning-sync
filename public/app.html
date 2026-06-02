@@ -2168,7 +2168,62 @@ function updateSyncIndicator() {
   }
 }
 
+// ===== NEW: Load plannings from backend API and sync with localStorage =====
+async function syncPlanningsFromAPI() {
+  try {
+    const apiBaseUrl = window.location.origin;
+
+    // Fetch list of plannings from API
+    const listResponse = await fetch(`${apiBaseUrl}/api/plannings`);
+    if (!listResponse.ok) throw new Error(`API error: ${listResponse.status}`);
+
+    const plannings = await listResponse.json();
+    if (!Array.isArray(plannings) || plannings.length === 0) {
+      console.log('[API Sync] No plannings found in API');
+      return false;
+    }
+
+    // Load each planning's full data
+    for (const summary of plannings) {
+      try {
+        const dataResponse = await fetch(`${apiBaseUrl}/api/planning/${summary.id}`);
+        if (!dataResponse.ok) continue;
+
+        const planning = await dataResponse.json();
+        if (planning && planning.data) {
+          // Write to localStorage using existing writePlanning() function
+          const fullData = ensurePlanningDataShape(planning.data);
+          writePlanning(summary.id, fullData);
+
+          // Update planning index
+          let index = getPlanningsIndex();
+          if (!index.find(p => p.id === summary.id)) {
+            index.push({
+              id: summary.id,
+              name: summary.name || 'Unknown Planning',
+              updatedAt: new Date(summary.updated_at).getTime()
+            });
+            setPlanningsIndex(index);
+          }
+
+          console.log(`[API Sync] ✅ Loaded planning: ${summary.name} (${summary.id})`);
+        }
+      } catch (e) {
+        console.warn(`[API Sync] Failed to load planning ${summary.id}:`, e.message);
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('[API Sync] Error syncing from API:', err.message);
+    return false;
+  }
+}
+
 function loadState() {
+  // First, try to sync plannings from API
+  syncPlanningsFromAPI().catch(err => console.warn('[Startup] API sync error:', err));
+
   let index = getPlanningsIndex();
 
   // Migration depuis l'ancienne clé monolithique (avant V13).
