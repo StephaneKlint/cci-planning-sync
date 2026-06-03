@@ -2356,9 +2356,14 @@ function stopCollaborativeSync() {
   }
 }
 
-function loadState() {
-  // First, try to sync plannings from API
-  syncPlanningsFromAPI().catch(err => console.warn('[Startup] API sync error:', err));
+async function loadState() {
+  // First, try to sync plannings from API and WAIT for it
+  try {
+    await syncPlanningsFromAPI();
+    console.log('[Startup] API plannings loaded before loadState()');
+  } catch (err) {
+    console.warn('[Startup] API sync error:', err);
+  }
 
   let index = getPlanningsIndex();
 
@@ -2521,7 +2526,7 @@ function getActivePlanningName() {
   }
 
   // Load state (will now use plannings loaded from API, or fall back to localStorage)
-  state = loadState();
+  state = await loadState();
 
   // FIX: Set state.id to currentPlanningId so sync mechanism can use it
   state.id = currentPlanningId;
