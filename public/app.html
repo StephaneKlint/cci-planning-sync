@@ -2221,8 +2221,8 @@ async function syncPlanningsFromAPI() {
 }
 
 // ===== COLLABORATIVE SYNC: Send & Receive Changes =====
-let lastPushedVersion = 0;
-let lastPulledVersion = 0;
+let lastPushedVersion = -1;  // Start at -1 to force initial push
+let lastPulledVersion = -1;  // Start at -1 to force initial pull
 let syncInProgress = false;
 
 async function pushChangesToServer() {
@@ -2233,10 +2233,15 @@ async function pushChangesToServer() {
     const apiBaseUrl = window.location.origin;
     const currentVersion = state.__sync?.version || 0;
 
+    console.log(`[Sync] Checking push: currentVersion=${currentVersion}, lastPushedVersion=${lastPushedVersion}`);
+
     // Only push if version has changed
     if (currentVersion === lastPushedVersion) {
+      console.log('[Sync] No changes to push');
       return;
     }
+
+    console.log(`[Sync] 📤 Pushing v${currentVersion} to server...`);
 
     const response = await fetch(`${apiBaseUrl}/api/planning/${currentPlanningId}`, {
       method: 'PATCH',
@@ -2259,6 +2264,8 @@ async function pushChangesToServer() {
       toast(`⚠️ Planning modifié par quelqu'un d'autre. Rechargement...`);
       // Pull latest from server
       await pullChangesFromServer(true);
+    } else {
+      console.error('[Sync] Push failed:', response.status, response.statusText);
     }
   } catch (err) {
     console.warn('[Sync] Push error:', err.message);
@@ -2276,14 +2283,22 @@ async function pullChangesFromServer(force = false) {
 
     // Fetch planning data from server
     const response = await fetch(`${apiBaseUrl}/api/planning/${currentPlanningId}`);
-    if (!response.ok) return;
+    if (!response.ok) {
+      console.warn('[Sync] Pull failed:', response.status);
+      return;
+    }
 
     const planning = await response.json();
-    if (!planning || !planning.data) return;
+    if (!planning || !planning.data) {
+      console.warn('[Sync] Pull: Invalid response');
+      return;
+    }
 
     const serverData = planning.data;
     const serverVersion = serverData.__sync?.version || 0;
     const localVersion = state.__sync?.version || 0;
+
+    console.log(`[Sync] Checking pull: serverVersion=${serverVersion}, localVersion=${localVersion}, force=${force}`);
 
     // Check if server has newer version
     if (serverVersion > localVersion || force) {
@@ -2305,6 +2320,8 @@ async function pullChangesFromServer(force = false) {
         const device = serverData.__sync?.device || 'Someone';
         toast(`🔔 ${device} modifié le planning`);
       }
+
+      console.log(`[Sync] ✅ Pulled v${serverVersion} from server`);
     }
   } catch (err) {
     console.warn('[Sync] Pull error:', err.message);
