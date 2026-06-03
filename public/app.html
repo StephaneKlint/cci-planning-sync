@@ -2220,6 +2220,125 @@ async function syncPlanningsFromAPI() {
   }
 }
 
+// ===== COLLABORATIVE SYNC: Send & Receive Changes =====
+let lastPushedVersion = 0;
+let lastPulledVersion = 0;
+let syncInProgress = false;
+
+async function pushChangesToServer() {
+  if (!state || !currentPlanningId || syncInProgress) return;
+
+  try {
+    syncInProgress = true;
+    const apiBaseUrl = window.location.origin;
+    const currentVersion = state.__sync?.version || 0;
+
+    // Only push if version has changed
+    if (currentVersion === lastPushedVersion) {
+      return;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/api/planning/${currentPlanningId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: state,
+        version: currentVersion,
+        device: navigator.userAgent.split(' ').slice(-2).join(' ')
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      lastPushedVersion = result.version;
+      console.log(`[Sync] ✅ Pushed v${result.version} to server`);
+    } else if (response.status === 409) {
+      // Conflict: someone else modified it
+      const conflict = await response.json();
+      console.warn('[Sync] ⚠️ Conflict! Server version:', conflict.currentVersion);
+      toast(`⚠️ Planning modifié par quelqu'un d'autre. Rechargement...`);
+      // Pull latest from server
+      await pullChangesFromServer(true);
+    }
+  } catch (err) {
+    console.warn('[Sync] Push error:', err.message);
+  } finally {
+    syncInProgress = false;
+  }
+}
+
+async function pullChangesFromServer(force = false) {
+  if (!state || !currentPlanningId || syncInProgress) return;
+
+  try {
+    syncInProgress = true;
+    const apiBaseUrl = window.location.origin;
+
+    // Fetch planning data from server
+    const response = await fetch(`${apiBaseUrl}/api/planning/${currentPlanningId}`);
+    if (!response.ok) return;
+
+    const planning = await response.json();
+    if (!planning || !planning.data) return;
+
+    const serverData = planning.data;
+    const serverVersion = serverData.__sync?.version || 0;
+    const localVersion = state.__sync?.version || 0;
+
+    // Check if server has newer version
+    if (serverVersion > localVersion || force) {
+      console.log(`[Sync] 🔄 Pulling from server (v${serverVersion} > v${localVersion})`);
+
+      // Merge server data into local state
+      Object.assign(state, serverData);
+      state.__sync = serverData.__sync;
+      lastPulledVersion = serverVersion;
+
+      // Save to storage
+      await savePlanningToStorage(state);
+
+      // Re-render UI
+      render();
+      renderDrawer();
+
+      if (!force) {
+        const device = serverData.__sync?.device || 'Someone';
+        toast(`🔔 ${device} modifié le planning`);
+      }
+    }
+  } catch (err) {
+    console.warn('[Sync] Pull error:', err.message);
+  } finally {
+    syncInProgress = false;
+  }
+}
+
+let collaborativeSyncInterval = null;
+
+function startCollaborativeSync() {
+  if (collaborativeSyncInterval) return;
+
+  // Sync every 5 seconds
+  collaborativeSyncInterval = setInterval(async () => {
+    if (state && currentPlanningId) {
+      // Push local changes
+      await pushChangesToServer();
+      // Pull remote changes
+      await pullChangesFromServer();
+    }
+  }, 5000);
+
+  console.log('[Sync] 🔄 Collaborative sync started (5s interval)');
+}
+
+function stopCollaborativeSync() {
+  if (collaborativeSyncInterval) {
+    clearInterval(collaborativeSyncInterval);
+    collaborativeSyncInterval = null;
+    console.log('[Sync] Collaborative sync stopped');
+  }
+}
+
 function loadState() {
   // First, try to sync plannings from API
   syncPlanningsFromAPI().catch(err => console.warn('[Startup] API sync error:', err));
@@ -2279,6 +2398,10 @@ function saveState() {
   // ===== PHASE 4: Also save to new persistence layer (IndexedDB + localStorage) =====
   if (state && state.id) {
     savePlanningToStorage(state).catch(err => console.error('[Storage] Failed to save:', err));
+  }
+  // ===== COLLABORATIVE SYNC: Push changes to server =====
+  if (state && currentPlanningId) {
+    pushChangesToServer().catch(err => console.warn('[Sync] Push failed:', err));
   }
 }
 function saveStateRaw() {
@@ -2399,9 +2522,13 @@ function getActivePlanningName() {
   // Start auto-sync background task
   startAutoSync();
 
+  // ===== NEW: Start collaborative sync (5s polling) =====
+  startCollaborativeSync();
+
   // Setup cleanup on unload
   window.addEventListener('beforeunload', () => {
     stopAutoSync();
+    stopCollaborativeSync();
   });
 
   // Initial sync indicator update

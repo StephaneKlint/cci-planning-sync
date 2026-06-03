@@ -208,6 +208,112 @@ app.post('/api/planning', async (req, res) => {
   }
 });
 
+// Update planning (collaborative sync)
+app.patch('/api/planning/:id', async (req, res) => {
+  try {
+    const planningId = req.params.id;
+    const { data, version, device } = req.body;
+
+    if (!data || !version) {
+      return res.status(400).json({ error: 'data and version required' });
+    }
+
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Get current planning to check version
+    const currentResult = await pool.query(
+      'SELECT data FROM plannings WHERE id = $1',
+      [planningId]
+    );
+
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Planning not found' });
+    }
+
+    const currentData = currentResult.rows[0].data;
+    const currentVersion = currentData.__sync?.version || 0;
+
+    // Check for conflicts (optimistic locking)
+    if (version < currentVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: 'Planning was modified by another user',
+        currentVersion,
+        yourVersion: version
+      });
+    }
+
+    // Save backup before updating
+    await pool.query(
+      `INSERT INTO backups (planning_id, version, device, data)
+       VALUES ($1, $2, $3, $4)`,
+      [planningId, version, device, JSON.stringify(data)]
+    );
+
+    // Update planning with new version
+    const newVersion = Math.max(version + 1, currentVersion + 1);
+    const updatedData = {
+      ...data,
+      __sync: {
+        ...data.__sync,
+        version: newVersion,
+        lastModified: Date.now(),
+        device: device || 'unknown'
+      }
+    };
+
+    await pool.query(
+      `UPDATE plannings SET data = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(updatedData), planningId]
+    );
+
+    // Broadcast update via WebSocket
+    io.emit('planning-updated', {
+      planningId,
+      version: newVersion,
+      device,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      version: newVersion,
+      message: 'Planning updated successfully'
+    });
+  } catch (err) {
+    console.error('[PATCH] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get planning changes since version (for polling sync)
+app.get('/api/planning/:id/changes', async (req, res) => {
+  try {
+    const planningId = req.params.id;
+    const sinceVersion = parseInt(req.query.since) || 0;
+
+    if (!process.env.DATABASE_URL) {
+      return res.json([]);
+    }
+
+    const result = await pool.query(
+      `SELECT version, device, created_at FROM backups
+       WHERE planning_id = $1 AND version > $2
+       ORDER BY version ASC LIMIT 50`,
+      [planningId, sinceVersion]
+    );
+
+    res.json({
+      changes: result.rows,
+      count: result.rows.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Import planning from JSON backup
 app.post('/api/planning/import', async (req, res) => {
   try {
