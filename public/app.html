@@ -1998,175 +1998,9 @@ function ensurePlanningDataShape(d) {
 
 // ===== PHASE 3: BACKGROUND SYNC WITH SHAREPOINT =====
 
-// Auto-sync timer reference
-let syncTimerRef = null;
-
-// Start background sync (called in init())
-function startAutoSync() {
-  if (!STORAGE_CONFIG.enableAutoSync || syncTimerRef) return;
-
-  syncTimerRef = setInterval(async () => {
-    if (state && state.id) {
-      await syncPlanningWithSharePoint(state);
-    }
-  }, STORAGE_CONFIG.syncInterval);
-
-  console.log(`[Sync] Auto-sync started (interval: ${STORAGE_CONFIG.syncInterval}ms)`);
-}
-
-// Stop background sync (called on beforeunload)
-function stopAutoSync() {
-  if (syncTimerRef) {
-    clearInterval(syncTimerRef);
-    syncTimerRef = null;
-    console.log('[Sync] Auto-sync stopped');
-  }
-}
-
-// Main sync function: pull from SharePoint, merge if needed, push if local is newer
-async function syncPlanningWithSharePoint(localState) {
-  if (!localState?.id || !state.__sync?.sharePointUrl) {
-    // This is expected - SharePoint sync is optional and requires configuration
-    // Silently return since this is not an error condition
-    return;
-  }
-
-  const planningId = localState.id;
-
-  try {
-    // STEP 1: Fetch remote state from SharePoint
-    const remoteState = await fetchFromSharePoint(state.__sync.sharePointUrl);
-
-    if (!remoteState) {
-      // File doesn't exist on SharePoint yet → push local
-      await pushToSharePoint(localState);
-      return;
-    }
-
-    // STEP 2: Compare versions and decide what to do
-    const shouldPull = resolveConflict(localState.__sync, remoteState.__sync);
-
-    if (shouldPull) {
-      // Remote is newer → pull and merge
-      console.log(`[Sync] Pulling from SharePoint (remote v${remoteState.__sync.version} > local v${localState.__sync.version})`);
-      mergeRemoteIntoLocal(remoteState);
-
-      // Save merged state
-      await savePlanningToStorage(state);
-
-    } else {
-      // Local is newer or tied → push to SharePoint
-      if (localState.__sync.version > remoteState.__sync.version) {
-        console.log(`[Sync] Pushing to SharePoint (local v${localState.__sync.version} > remote v${remoteState.__sync.version})`);
-        await pushToSharePoint(localState);
-      }
-    }
-
-    // STEP 3: Mark as synced
-    state.__sync.syncStatus = 'synced';
-    state.__sync.lastSyncTime = Date.now();
-    await savePlanningToStorage(state);
-    updateSyncIndicator();
-
-  } catch (error) {
-    state.__sync.syncStatus = 'error';
-    state.__sync.lastSyncTime = Date.now();
-    console.warn(`[Sync] Error syncing planning ${planningId}:`, error.message);
-    updateSyncIndicator();
-  }
-}
-
-// Fetch from SharePoint (uses fetch + CORS if allowed, else falls back to local)
-async function fetchFromSharePoint(url) {
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(STORAGE_CONFIG.syncTimeout)
-    });
-
-    if (response.ok) {
-      return await response.json();
-    } else if (response.status === 404) {
-      return null; // File doesn't exist yet
-    } else {
-      throw new Error(`HTTP ${response.status}`);
-    }
-  } catch (error) {
-    console.warn('[Sync] Could not fetch from SharePoint:', error.message);
-    // Treat network error as "no remote file" → will push local
-    return null;
-  }
-}
-
-// Push to SharePoint (would need server-side support or WebDAV)
-async function pushToSharePoint(localState) {
-  // NOTE: This requires either:
-  // - A server endpoint that accepts PUT requests
-  // - WebDAV support on SharePoint (uncommon)
-  // - Manual export/import workflow by user
-
-  // For now, just log and mark as synced
-  console.log('[Sync] Push to SharePoint: requires server endpoint (to implement)');
-  console.log('[Sync] Interim: User can manually export JSON from UI and upload to SharePoint');
-}
-
-// Resolve conflict: return true if should pull, false if should push
-function resolveConflict(localSync, remoteSync) {
-  // Version-based: remote newer → pull
-  if (remoteSync.version > localSync.version) {
-    return true;
-  }
-
-  // Same version but remote is newer (by timestamp) → pull
-  if (remoteSync.version === localSync.version &&
-      remoteSync.lastModified > localSync.lastModified) {
-    return true;
-  }
-
-  // Local is newer or tied → keep local (last-write-wins)
-  return false;
-}
-
-// Merge remote state into local (smart merge preserving local edits)
-function mergeRemoteIntoLocal(remoteState) {
-  // For now: simple replacement (can be enhanced to smart-merge specific fields)
-  // In future: merge phases individually, conflicts handled at field level
-
-  Object.assign(state, remoteState);
-  state.__sync = {
-    ...state.__sync,
-    version: Math.max(state.__sync.version, remoteState.__sync.version) + 1
-  };
-}
-
-// Update sync status display in UI
-function updateSyncIndicator() {
-  const icon = document.getElementById('sync-status-icon');
-  const text = document.getElementById('sync-status-text');
-  const timestamp = document.getElementById('sync-timestamp');
-
-  if (!icon || !text) return; // UI elements not ready yet
-
-  const syncStatus = state.__sync?.syncStatus || 'new';
-  const lastSync = state.__sync?.lastSyncTime;
-
-  icon.className = syncStatus;
-  text.textContent = syncStatus === 'synced' ? 'Synced' :
-                     syncStatus === 'pending' ? 'Pending...' :
-                     syncStatus === 'error' ? 'Sync error' : 'New';
-
-  if (lastSync && timestamp) {
-    const ago = Math.floor((Date.now() - lastSync) / 1000);
-    if (ago < 60) {
-      timestamp.textContent = 'just now';
-    } else if (ago < 3600) {
-      timestamp.textContent = `${Math.floor(ago / 60)}m ago`;
-    } else {
-      timestamp.textContent = `${Math.floor(ago / 3600)}h ago`;
-    }
-  }
-}
+// ⚠️ REMOVED: Dead code for SharePoint offline-first sync (Option B)
+// This was superseded by collaborative sync via /api/planning endpoints
+// Kept collaborative sync via HTTP polling instead
 
 // ===== NEW: Load plannings from backend API and sync with localStorage =====
 async function syncPlanningsFromAPI() {
@@ -2541,20 +2375,15 @@ function getActivePlanningName() {
     }
   }
 
-  // Start auto-sync background task
-  startAutoSync();
-
   // ===== NEW: Start collaborative sync (5s polling) =====
   startCollaborativeSync();
 
   // Setup cleanup on unload
+  let autoExportTimerRef = null; // Will be assigned below
   window.addEventListener('beforeunload', () => {
-    stopAutoSync();
     stopCollaborativeSync();
+    if (autoExportTimerRef) clearInterval(autoExportTimerRef);
   });
-
-  // Initial sync indicator update
-  updateSyncIndicator();
 
   // ===== PHASE 8: Auto-Export for SharePoint Backups =====
 
@@ -2641,7 +2470,7 @@ function getActivePlanningName() {
   };
 
   // Also auto-export every minute (fallback if saveState not called frequently)
-  const autoExportTimer = setInterval(async () => {
+  autoExportTimerRef = setInterval(async () => {
     const planningId = state?.id || currentPlanningId;
     if (planningId) {
       console.log(`[AutoSync] Triggering sync for ${planningId}`);
@@ -2723,11 +2552,6 @@ function getActivePlanningName() {
       console.error('[Server-Sync] Error:', e.message);
     }
   }
-
-  // Cleanup on unload
-  window.addEventListener('beforeunload', () => {
-    clearInterval(autoExportTimer);
-  });
 
   // Re-render with updated state
   render();
