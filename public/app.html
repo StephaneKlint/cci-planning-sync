@@ -200,7 +200,13 @@ body {
 }
 
 /* GANTT */
-.viewport { padding: 24px; overflow-x: scroll; overflow-y: auto; }
+.viewport {
+  padding: 24px;
+  overflow-x: scroll;
+  overflow-y: auto;
+  height: 500px;
+  max-height: calc(100vh - 200px);
+}
 .gantt {
   background: var(--panel);
   border: 1px solid var(--border);
