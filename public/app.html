@@ -375,6 +375,34 @@ body.print-fit .project-row .label .subtitle { font-size: 8.5px; }
   z-index: 5;
 }
 
+/* Postponement capsule (reporté à [date]) */
+.postponement-capsule {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #333;
+  border: 2px solid;
+  cursor: pointer;
+  z-index: 3;
+  transition: opacity .2s;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+[data-theme="dark"] .postponement-capsule {
+  color: #f0f0f0;
+}
+.postponement-capsule:hover {
+  z-index: 6;
+  opacity: 0.9;
+}
+
 /* V14 Lot 4a (#6) : ligne secondaire repliable dans l'éditeur de phases */
 .phase-secondary { display: none; background: rgba(15,23,42,0.025); }
 [data-theme="dark"] .phase-secondary { background: rgba(255,255,255,0.025); }
@@ -1450,7 +1478,15 @@ const DEFAULT_DATA = {
         {type:'pmep', date:'2026-02-02', label:'PMEP 02/02'},
         {type:'cab', date:'2026-02-06', label:'CAB 06/02'},
         {type:'mep', date:'2026-02-09', label:'MEP 09/02'}
-      ]},
+      ],
+      postponement:{
+        enabled: true,
+        text: 'Reporté en T1 2027',
+        color: '#FB923C',
+        opacity: 70,
+        width: 100,
+        position: 'center'
+      }},
     { id:'lot4310', domain:'mco', name:'Lot 4.3.10', subtitle:'[À CONFIRMER dev/recette]', labelPos:'below',
       phases:[
         {type:'cadrage', start:'2026-01-19', end:'2026-02-27'},
@@ -3682,6 +3718,59 @@ function render() {
         row.appendChild(el);
       });
 
+      // Postponement capsule (reporté à [date]) — overlay semi-transparent
+      if (proj.postponement?.enabled) {
+        const capsule = document.createElement('div');
+        capsule.className = 'postponement-capsule';
+        capsule.textContent = proj.postponement.text || 'Reporté';
+
+        // Calculate position based on phases
+        if (proj.phases.length > 0) {
+          const firstPhase = proj.phases[0];
+          const lastPhase = proj.phases[proj.phases.length - 1];
+
+          const wsF = dateToFracWeek(firstPhase.start);
+          const weF = dateToFracWeek(lastPhase.end);
+
+          // Check if any phase is visible
+          if (weF > (startW - 1) && wsF < endW) {
+            const visStart = Math.max(wsF, startW - 1);
+            const visEnd = Math.min(weF, endW);
+
+            const left = labelW + (visStart - (startW - 1)) * weekW + 1;
+            const width = Math.max(weekW * 0.3, (visEnd - visStart) * weekW - 2);
+            const capsuleWidth = (proj.postponement.width / 100) * width;
+
+            capsule.style.left = left + 'px';
+            capsule.style.width = capsuleWidth + 'px';
+            capsule.style.height = pillH + 'px';
+
+            // Color styling
+            const capsuleColor = proj.postponement.color || '#FB923C';
+            capsule.style.backgroundColor = capsuleColor;
+            capsule.style.borderColor = capsuleColor;
+            capsule.style.opacity = (proj.postponement.opacity || 70) / 100;
+
+            // Position (top/center/bottom)
+            const position = proj.postponement.position || 'center';
+            const lane = assignment[0] || 0;
+            const topBase = topSpace + lane * laneH;
+
+            if (position === 'top') {
+              capsule.style.top = (topBase - pillH) + 'px';
+            } else if (position === 'bottom') {
+              capsule.style.top = (topBase + pillH) + 'px';
+            } else {
+              // center
+              capsule.style.top = topBase + 'px';
+            }
+
+            capsule.addEventListener('click', () => editProject(proj.id));
+            row.appendChild(capsule);
+          }
+        }
+      }
+
       // Milestones — V6: chip hors pilule + losange à la base du chip + pin fin jusqu'au bord de la pilule
       const diaSize = compact ? 7 : 8;
       proj.milestones.forEach((ms, mi) => {
@@ -4390,6 +4479,50 @@ function renderProjectsTab() {
           <button class="add-row" data-action="add-milestone" style="flex:1">+ Ajouter un jalon</button>
           <button class="btn" data-action="generate-cadence" title="Génère/met à jour les 4 jalons CCI (Livraison REC3 / PMEP / CAB / MEP) à partir de la fin de la phase Dev, en jours ouvrés selon la cadence du domaine">✨ Générer cadence CCI</button>
         </div>
+
+        <!-- Postponement capsule section -->
+        <div class="project-section-title">📍 Reporté à [date]</div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; padding:8px; background:var(--panel); border-radius:6px">
+          <label style="display:flex; align-items:center; gap:6px; margin:0; flex:1">
+            <input type="checkbox" data-field="postponement.enabled" ${p.postponement?.enabled ? 'checked' : ''} style="cursor:pointer">
+            <span>Afficher le badge "Reporté"</span>
+          </label>
+        </div>
+        ${p.postponement?.enabled ? `
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:8px; background:var(--panel); border-radius:6px">
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Texte</label>
+            <input type="text" value="${escapeHtml(p.postponement?.text || 'Reporté en T1 2027')}" data-field="postponement.text" placeholder="Ex. Reporté en T1 2027" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur</label>
+            <input type="color" data-field="postponement.color" value="${p.postponement?.color || '#FB923C'}" style="width:100%; height:32px; border:1px solid var(--border); border-radius:4px; cursor:pointer">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Transparence (%)</label>
+            <div style="display:flex; align-items:center; gap:6px">
+              <input type="range" min="0" max="100" value="${p.postponement?.opacity || 70}" data-field="postponement.opacity" style="flex:1">
+              <span style="font-size:11px; min-width:30px">${p.postponement?.opacity || 70}%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Largeur (%)</label>
+            <div style="display:flex; align-items:center; gap:6px">
+              <input type="range" min="0" max="100" value="${p.postponement?.width || 100}" data-field="postponement.width" style="flex:1">
+              <span style="font-size:11px; min-width:30px">${p.postponement?.width || 100}%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Position</label>
+            <select data-field="postponement.position" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+              <option value="top" ${p.postponement?.position === 'top' ? 'selected' : ''}>↑ Haut</option>
+              <option value="center" ${(p.postponement?.position === 'center' || !p.postponement?.position) ? 'selected' : ''}>↔ Centre</option>
+              <option value="bottom" ${p.postponement?.position === 'bottom' ? 'selected' : ''}>↓ Bas</option>
+            </select>
+          </div>
+        </div>
+        ` : ''}
+
       </div>`;
     });
   });
@@ -5586,6 +5719,42 @@ function attachDrawerHandlers() {
             autoSortProjectItems(p);
           }
         }
+      } else if (field.startsWith('postponement.')) {
+        // Handle postponement fields (postponement.text, postponement.color, etc.)
+        p.postponement = p.postponement || {};
+        const subField = field.split('.')[1];
+
+        if (subField === 'enabled') {
+          if (t.type === 'checkbox') {
+            p.postponement.enabled = t.checked;
+          }
+        } else if (subField === 'opacity' || subField === 'width') {
+          // Convert to number for opacity and width
+          const num = parseFloat(value);
+          if (isNaN(num) || num < 0) {
+            delete p.postponement[subField];
+          } else {
+            p.postponement[subField] = Math.min(100, Math.max(0, num));
+          }
+          // Update displayed value next to range slider
+          const parentDiv = t.closest('div');
+          if (parentDiv) {
+            const displaySpan = parentDiv.querySelector('span');
+            if (displaySpan) displaySpan.textContent = p.postponement[subField] + '%';
+          }
+        } else {
+          // text, color, position
+          if (value === '' || value === null || value === undefined) {
+            delete p.postponement[subField];
+          } else {
+            p.postponement[subField] = value;
+          }
+        }
+
+        // Clean up if all postponement fields are empty
+        if (Object.keys(p.postponement).filter(k => p.postponement[k]).length === 0) {
+          delete p.postponement;
+        }
       } else {
         setOrDelete(p, field, value);
       }
@@ -5640,6 +5809,10 @@ function attachDrawerHandlers() {
     }
     saveState();
     render();
+    // Re-render drawer if postponement.enabled changed (to show/hide postponement fields)
+    if (t.dataset.field?.startsWith('postponement.enabled')) {
+      renderDrawer();
+    }
   };
   body.addEventListener('input', onChange);
   body.addEventListener('change', onChange);
