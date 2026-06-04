@@ -3725,57 +3725,43 @@ function render() {
         capsule.className = 'postponement-capsule';
         capsule.textContent = proj.postponement.text || 'Reporté';
 
-        // Calculate position based on phases
-        if (proj.phases.length > 0) {
-          const firstPhase = proj.phases[0];
-          const lastPhase = proj.phases[proj.phases.length - 1];
+        // Height: either auto (= laneCount * laneH) or fixed value
+        const capsuleHeight = proj.postponement.heightAuto ? (laneCount * laneH - (laneCount - 1) * 5) : (proj.postponement.height || 60);
 
-          const wsF = dateToFracWeek(firstPhase.start);
-          const weF = dateToFracWeek(lastPhase.end);
+        // Width: entire gantt width
+        const totalViewportWidth = actualWeeks * weekW;
+        const capsuleWidth = (proj.postponement.width / 100) * totalViewportWidth;
 
-          // Check if any phase is visible
-          if (weF > (startW - 1) && wsF < endW) {
-            const visStart = Math.max(wsF, startW - 1);
-            const visEnd = Math.min(weF, endW);
+        // Position: start from labelW, cover entire width
+        capsule.style.left = labelW + 'px';
+        capsule.style.width = capsuleWidth + 'px';
+        capsule.style.height = capsuleHeight + 'px';
 
-            const left = labelW + (visStart - (startW - 1)) * weekW + 1;
-            const width = Math.max(weekW * 0.3, (visEnd - visStart) * weekW - 2);
-            const capsuleWidth = (proj.postponement.width / 100) * width;
+        // Color styling
+        const capsuleColor = proj.postponement.color || '#FB923C';
+        const textColor = proj.postponement.textColor || '#333333';
+        const fontSize = proj.postponement.fontSize || 16;
+        capsule.style.backgroundColor = capsuleColor;
+        capsule.style.borderColor = capsuleColor;
+        capsule.style.color = textColor;
+        capsule.style.fontSize = fontSize + 'px';
+        capsule.style.opacity = (proj.postponement.opacity || 70) / 100;
 
-            // Height: either auto (= laneCount * laneH) or fixed value
-            const capsuleHeight = proj.postponement.heightAuto ? (laneCount * laneH - (laneCount - 1) * 5) : (proj.postponement.height || 60);
+        // Alignment
+        const alignV = proj.postponement.alignmentVertical || 'center';
+        const alignH = proj.postponement.alignmentHorizontal || 'center';
 
-            capsule.style.left = left + 'px';
-            capsule.style.width = capsuleWidth + 'px';
-            capsule.style.height = capsuleHeight + 'px';
+        capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
+        capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
+        capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
+        capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
 
-            // Color styling
-            const capsuleColor = proj.postponement.color || '#FB923C';
-            const textColor = proj.postponement.textColor || '#333333';
-            const fontSize = proj.postponement.fontSize || 16;
-            capsule.style.backgroundColor = capsuleColor;
-            capsule.style.borderColor = capsuleColor;
-            capsule.style.color = textColor;
-            capsule.style.fontSize = fontSize + 'px';
-            capsule.style.opacity = (proj.postponement.opacity || 70) / 100;
+        const lane = assignment[0] || 0;
+        const topBase = topSpace + lane * laneH;
+        capsule.style.top = topBase + 'px';
 
-            // Alignment
-            const alignV = proj.postponement.alignmentVertical || 'center';
-            const alignH = proj.postponement.alignmentHorizontal || 'center';
-
-            capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
-            capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
-            capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
-            capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
-
-            const lane = assignment[0] || 0;
-            const topBase = topSpace + lane * laneH;
-            capsule.style.top = topBase + 'px';
-
-            capsule.addEventListener('click', () => editProject(proj.id));
-            row.appendChild(capsule);
-          }
-        }
+        capsule.addEventListener('click', () => editProject(proj.id));
+        row.appendChild(capsule);
       }
 
       // Milestones — V6: chip hors pilule + losange à la base du chip + pin fin jusqu'au bord de la pilule
@@ -3854,82 +3840,89 @@ function render() {
       });
     });
 
-    // Postponement capsule for entire domain
-    if (domain.postponement?.enabled) {
-      const capsule = document.createElement('div');
-      capsule.className = 'postponement-capsule';
-      capsule.textContent = domain.postponement.text || 'Reporté';
-
-      // Calculate total height of all projects in this domain
-      const domainRows = Array.from(gantt.querySelectorAll('.project-row')).filter(r => {
-        const label = r.querySelector('.label');
-        return label && label.parentElement === r;
+    // Postponement capsule for entire domain - will be created after all projects are rendered
+    // Store the necessary data in domRow for later processing
+    if (domain.postponement?.enabled && projects.length > 0) {
+      domRow.dataset.domainPostponement = JSON.stringify({
+        enabled: true,
+        text: domain.postponement.text || 'Reporté',
+        color: domain.postponement.color || '#FB923C',
+        textColor: domain.postponement.textColor || '#333333',
+        fontSize: domain.postponement.fontSize || 16,
+        opacity: domain.postponement.opacity || 70,
+        width: domain.postponement.width || 100,
+        height: domain.postponement.height || 120,
+        heightAuto: domain.postponement.heightAuto || false,
+        alignmentVertical: domain.postponement.alignmentVertical || 'center',
+        alignmentHorizontal: domain.postponement.alignmentHorizontal || 'center',
+        projectCount: projects.length,
+        labelW: labelW,
+        weekW: weekW,
+        actualWeeks: actualWeeks
       });
-
-      // Find rows that belong to this domain (all rows between domRow and next domRow or end)
-      const domainRowsList = [];
-      let foundDomain = false;
-      for (const row of gantt.children) {
-        if (row === domRow) {
-          foundDomain = true;
-          continue;
-        }
-        if (foundDomain) {
-          if (row.classList.contains('domain-row')) {
-            break; // Next domain
-          }
-          if (row.classList.contains('project-row')) {
-            domainRowsList.push(row);
-          }
-        }
-      }
-
-      if (domainRowsList.length > 0) {
-        // Calculate total height
-        let totalHeight = 0;
-        for (const row of domainRowsList) {
-          totalHeight += row.offsetHeight;
-        }
-
-        // If heightAuto, use total height; otherwise use fixed value
-        const capsuleHeight = domain.postponement.heightAuto ? totalHeight : (domain.postponement.height || 120);
-
-        // Color styling
-        const capsuleColor = domain.postponement.color || '#FB923C';
-        const textColor = domain.postponement.textColor || '#333333';
-        const fontSize = domain.postponement.fontSize || 16;
-        capsule.style.backgroundColor = capsuleColor;
-        capsule.style.borderColor = capsuleColor;
-        capsule.style.color = textColor;
-        capsule.style.fontSize = fontSize + 'px';
-        capsule.style.opacity = (domain.postponement.opacity || 70) / 100;
-
-        // Alignment
-        const alignV = domain.postponement.alignmentVertical || 'center';
-        const alignH = domain.postponement.alignmentHorizontal || 'center';
-
-        capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
-        capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
-        capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
-        capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
-
-        // Width: calculate based on visible weeks
-        const totalViewportWidth = actualWeeks * weekW;
-        const capsuleWidth = (domain.postponement.width / 100) * totalViewportWidth;
-
-        // Position: absolute, covering the domain rows horizontally
-        capsule.style.position = 'absolute';
-        capsule.style.left = labelW + 'px';
-        capsule.style.top = (domRow.offsetTop + domRow.offsetHeight) + 'px';
-        capsule.style.width = capsuleWidth + 'px';
-        capsule.style.height = capsuleHeight + 'px';
-        capsule.style.zIndex = '1';
-
-        capsule.addEventListener('click', () => editProject(null)); // Click to edit domain?
-        gantt.appendChild(capsule);
-      }
     }
   });
+
+  // Render domain postponement capsules after all rows are added
+  const domainRows = Array.from(gantt.querySelectorAll('[data-domain-postponement]'));
+  for (const domRow of domainRows) {
+    const postponeData = JSON.parse(domRow.dataset.domainPostponement);
+
+    // Find all project rows that follow this domRow until next domRow
+    const projectRows = [];
+    let currentRow = domRow.nextElementSibling;
+    while (currentRow && !currentRow.classList.contains('domain-row')) {
+      if (currentRow.classList.contains('project-row')) {
+        projectRows.push(currentRow);
+      }
+      currentRow = currentRow.nextElementSibling;
+    }
+
+    if (projectRows.length > 0) {
+      // Create capsule that covers all project rows
+      const capsule = document.createElement('div');
+      capsule.className = 'postponement-capsule';
+      capsule.textContent = postponeData.text;
+
+      // Calculate total height
+      let totalHeight = 0;
+      for (const row of projectRows) {
+        totalHeight += row.offsetHeight;
+      }
+
+      const capsuleHeight = postponeData.heightAuto ? totalHeight : postponeData.height;
+      const capsuleWidth = (postponeData.width / 100) * (postponeData.actualWeeks * postponeData.weekW);
+
+      // Styling
+      capsule.style.backgroundColor = postponeData.color;
+      capsule.style.borderColor = postponeData.color;
+      capsule.style.color = postponeData.textColor;
+      capsule.style.fontSize = postponeData.fontSize + 'px';
+      capsule.style.opacity = postponeData.opacity / 100;
+
+      // Alignment
+      const alignV = postponeData.alignmentVertical;
+      const alignH = postponeData.alignmentHorizontal;
+      capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
+      capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
+      capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
+      capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
+
+      // Position
+      capsule.style.position = 'absolute';
+      capsule.style.left = postponeData.labelW + 'px';
+      capsule.style.top = projectRows[0].offsetTop + 'px';
+      capsule.style.width = capsuleWidth + 'px';
+      capsule.style.height = capsuleHeight + 'px';
+      capsule.style.zIndex = '2';
+
+      capsule.addEventListener('click', () => {
+        // Click on domain capsule doesn't do anything for now
+      });
+
+      gantt.appendChild(capsule);
+    }
+  }
 
   // Today line
   const today = new Date();
