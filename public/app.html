@@ -3840,89 +3840,77 @@ function render() {
       });
     });
 
-    // Postponement capsule for entire domain - will be created after all projects are rendered
-    // Store the necessary data in domRow for later processing
+    // Mark domain for postponement rendering later
     if (domain.postponement?.enabled && projects.length > 0) {
-      domRow.dataset.domainPostponement = JSON.stringify({
-        enabled: true,
-        text: domain.postponement.text || 'Reporté',
-        color: domain.postponement.color || '#FB923C',
-        textColor: domain.postponement.textColor || '#333333',
-        fontSize: domain.postponement.fontSize || 16,
-        opacity: domain.postponement.opacity || 70,
-        width: domain.postponement.width || 100,
-        height: domain.postponement.height || 120,
-        heightAuto: domain.postponement.heightAuto || false,
-        alignmentVertical: domain.postponement.alignmentVertical || 'center',
-        alignmentHorizontal: domain.postponement.alignmentHorizontal || 'center',
-        projectCount: projects.length,
-        labelW: labelW,
-        weekW: weekW,
-        actualWeeks: actualWeeks
-      });
+      domRow.dataset.hasDomainPostponement = 'true';
+      domRow.dataset.domainId = domain.id;
     }
   });
 
   // Render domain postponement capsules after all rows are added
-  const domainRows = Array.from(gantt.querySelectorAll('[data-domain-postponement]'));
-  for (const domRow of domainRows) {
-    const postponeData = JSON.parse(domRow.dataset.domainPostponement);
+  requestAnimationFrame(() => {
+    const domainRows = Array.from(gantt.querySelectorAll('[data-has-domain-postponement="true"]'));
+    for (const domRow of domainRows) {
+      const domainId = domRow.dataset.domainId;
+      const domain = state.domains.find(d => d.id === domainId);
+      if (!domain || !domain.postponement?.enabled) continue;
 
-    // Find all project rows that follow this domRow until next domRow
-    const projectRows = [];
-    let currentRow = domRow.nextElementSibling;
-    while (currentRow && !currentRow.classList.contains('domain-row')) {
-      if (currentRow.classList.contains('project-row')) {
-        projectRows.push(currentRow);
-      }
-      currentRow = currentRow.nextElementSibling;
-    }
-
-    if (projectRows.length > 0) {
-      // Create capsule that covers all project rows
-      const capsule = document.createElement('div');
-      capsule.className = 'postponement-capsule';
-      capsule.textContent = postponeData.text;
-
-      // Calculate total height
-      let totalHeight = 0;
-      for (const row of projectRows) {
-        totalHeight += row.offsetHeight;
+      // Find all project rows that follow this domRow until next domRow
+      const projectRows = [];
+      let currentRow = domRow.nextElementSibling;
+      while (currentRow && !currentRow.classList.contains('domain-row')) {
+        if (currentRow.classList.contains('project-row')) {
+          projectRows.push(currentRow);
+        }
+        currentRow = currentRow.nextElementSibling;
       }
 
-      const capsuleHeight = postponeData.heightAuto ? totalHeight : postponeData.height;
-      const capsuleWidth = (postponeData.width / 100) * (postponeData.actualWeeks * postponeData.weekW);
+      if (projectRows.length > 0) {
+        // Create capsule that covers all project rows
+        const capsule = document.createElement('div');
+        capsule.className = 'postponement-capsule';
+        capsule.textContent = domain.postponement.text || 'Reporté';
 
-      // Styling
-      capsule.style.backgroundColor = postponeData.color;
-      capsule.style.borderColor = postponeData.color;
-      capsule.style.color = postponeData.textColor;
-      capsule.style.fontSize = postponeData.fontSize + 'px';
-      capsule.style.opacity = postponeData.opacity / 100;
+        // Calculate total height of all project rows
+        let totalHeight = 0;
+        for (const row of projectRows) {
+          totalHeight += row.offsetHeight;
+        }
 
-      // Alignment
-      const alignV = postponeData.alignmentVertical;
-      const alignH = postponeData.alignmentHorizontal;
-      capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
-      capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
-      capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
-      capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
+        const capsuleHeight = domain.postponement.heightAuto ? totalHeight : (domain.postponement.height || 120);
+        const totalViewportWidth = actualWeeks * weekW;
+        const capsuleWidth = (domain.postponement.width / 100) * totalViewportWidth;
 
-      // Position
-      capsule.style.position = 'absolute';
-      capsule.style.left = postponeData.labelW + 'px';
-      capsule.style.top = projectRows[0].offsetTop + 'px';
-      capsule.style.width = capsuleWidth + 'px';
-      capsule.style.height = capsuleHeight + 'px';
-      capsule.style.zIndex = '2';
+        // Styling
+        const capsuleColor = domain.postponement.color || '#FB923C';
+        const textColor = domain.postponement.textColor || '#333333';
+        const fontSize = domain.postponement.fontSize || 16;
+        capsule.style.backgroundColor = capsuleColor;
+        capsule.style.borderColor = capsuleColor;
+        capsule.style.color = textColor;
+        capsule.style.fontSize = fontSize + 'px';
+        capsule.style.opacity = (domain.postponement.opacity || 70) / 100;
 
-      capsule.addEventListener('click', () => {
-        // Click on domain capsule doesn't do anything for now
-      });
+        // Alignment
+        const alignV = domain.postponement.alignmentVertical || 'center';
+        const alignH = domain.postponement.alignmentHorizontal || 'center';
+        capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
+        capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
+        capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
+        capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
 
-      gantt.appendChild(capsule);
+        // Position - absolute positioning within gantt
+        capsule.style.position = 'absolute';
+        capsule.style.left = labelW + 'px';
+        capsule.style.top = projectRows[0].offsetTop + 'px';
+        capsule.style.width = capsuleWidth + 'px';
+        capsule.style.height = capsuleHeight + 'px';
+        capsule.style.zIndex = '2';
+
+        gantt.appendChild(capsule);
+      }
     }
-  }
+  });
 
   // Today line
   const today = new Date();
