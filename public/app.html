@@ -3718,8 +3718,9 @@ function render() {
         row.appendChild(el);
       });
 
-      // Postponement capsule (reporté à [date]) — overlay semi-transparent
-      if (proj.postponement?.enabled) {
+      // Postponement capsule (reporté à [date]) — overlay semi-transparent for projects
+      // Only render if domain doesn't have postponement
+      if (proj.postponement?.enabled && !domain.postponement?.enabled) {
         const capsule = document.createElement('div');
         capsule.className = 'postponement-capsule';
         capsule.textContent = proj.postponement.text || 'Reporté';
@@ -3741,29 +3742,35 @@ function render() {
             const width = Math.max(weekW * 0.3, (visEnd - visStart) * weekW - 2);
             const capsuleWidth = (proj.postponement.width / 100) * width;
 
+            // Height: either auto (= laneCount * laneH) or fixed value
+            const capsuleHeight = proj.postponement.heightAuto ? (laneCount * laneH - (laneCount - 1) * 5) : (proj.postponement.height || 60);
+
             capsule.style.left = left + 'px';
             capsule.style.width = capsuleWidth + 'px';
-            capsule.style.height = pillH + 'px';
+            capsule.style.height = capsuleHeight + 'px';
 
             // Color styling
             const capsuleColor = proj.postponement.color || '#FB923C';
+            const textColor = proj.postponement.textColor || '#333333';
+            const fontSize = proj.postponement.fontSize || 16;
             capsule.style.backgroundColor = capsuleColor;
             capsule.style.borderColor = capsuleColor;
+            capsule.style.color = textColor;
+            capsule.style.fontSize = fontSize + 'px';
             capsule.style.opacity = (proj.postponement.opacity || 70) / 100;
 
-            // Position (top/center/bottom)
-            const position = proj.postponement.position || 'center';
+            // Alignment
+            const alignV = proj.postponement.alignmentVertical || 'center';
+            const alignH = proj.postponement.alignmentHorizontal || 'center';
+
+            capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
+            capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
+            capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
+            capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
+
             const lane = assignment[0] || 0;
             const topBase = topSpace + lane * laneH;
-
-            if (position === 'top') {
-              capsule.style.top = (topBase - pillH) + 'px';
-            } else if (position === 'bottom') {
-              capsule.style.top = (topBase + pillH) + 'px';
-            } else {
-              // center
-              capsule.style.top = topBase + 'px';
-            }
+            capsule.style.top = topBase + 'px';
 
             capsule.addEventListener('click', () => editProject(proj.id));
             row.appendChild(capsule);
@@ -3846,6 +3853,82 @@ function render() {
         if (labelInner > rowH) row.style.height = labelInner + 'px';
       });
     });
+
+    // Postponement capsule for entire domain
+    if (domain.postponement?.enabled) {
+      const capsule = document.createElement('div');
+      capsule.className = 'postponement-capsule';
+      capsule.textContent = domain.postponement.text || 'Reporté';
+
+      // Calculate total height of all projects in this domain
+      const domainRows = Array.from(gantt.querySelectorAll('.project-row')).filter(r => {
+        const label = r.querySelector('.label');
+        return label && label.parentElement === r;
+      });
+
+      // Find rows that belong to this domain (all rows between domRow and next domRow or end)
+      const domainRowsList = [];
+      let foundDomain = false;
+      for (const row of gantt.children) {
+        if (row === domRow) {
+          foundDomain = true;
+          continue;
+        }
+        if (foundDomain) {
+          if (row.classList.contains('domain-row')) {
+            break; // Next domain
+          }
+          if (row.classList.contains('project-row')) {
+            domainRowsList.push(row);
+          }
+        }
+      }
+
+      if (domainRowsList.length > 0) {
+        // Calculate total height
+        let totalHeight = 0;
+        for (const row of domainRowsList) {
+          totalHeight += row.offsetHeight;
+        }
+
+        // If heightAuto, use total height; otherwise use fixed value
+        const capsuleHeight = domain.postponement.heightAuto ? totalHeight : (domain.postponement.height || 120);
+
+        // Color styling
+        const capsuleColor = domain.postponement.color || '#FB923C';
+        const textColor = domain.postponement.textColor || '#333333';
+        const fontSize = domain.postponement.fontSize || 16;
+        capsule.style.backgroundColor = capsuleColor;
+        capsule.style.borderColor = capsuleColor;
+        capsule.style.color = textColor;
+        capsule.style.fontSize = fontSize + 'px';
+        capsule.style.opacity = (domain.postponement.opacity || 70) / 100;
+
+        // Alignment
+        const alignV = domain.postponement.alignmentVertical || 'center';
+        const alignH = domain.postponement.alignmentHorizontal || 'center';
+
+        capsule.style.justifyContent = alignH === 'left' ? 'flex-start' : alignH === 'right' ? 'flex-end' : 'center';
+        capsule.style.alignItems = alignV === 'top' ? 'flex-start' : alignV === 'bottom' ? 'flex-end' : 'center';
+        capsule.style.paddingLeft = alignH === 'left' ? '12px' : '0';
+        capsule.style.paddingRight = alignH === 'right' ? '12px' : '0';
+
+        // Width: calculate based on visible weeks
+        const totalViewportWidth = actualWeeks * weekW;
+        const capsuleWidth = (domain.postponement.width / 100) * totalViewportWidth;
+
+        // Position: absolute, covering the domain rows horizontally
+        capsule.style.position = 'absolute';
+        capsule.style.left = labelW + 'px';
+        capsule.style.top = (domRow.offsetTop + domRow.offsetHeight) + 'px';
+        capsule.style.width = capsuleWidth + 'px';
+        capsule.style.height = capsuleHeight + 'px';
+        capsule.style.zIndex = '1';
+
+        capsule.addEventListener('click', () => editProject(null)); // Click to edit domain?
+        gantt.appendChild(capsule);
+      }
+    }
   });
 
   // Today line
@@ -4492,11 +4575,22 @@ function renderProjectsTab() {
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:8px; background:var(--panel); border-radius:6px">
           <div>
             <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Texte</label>
-            <input type="text" value="${escapeHtml(p.postponement?.text || 'Reporté en T1 2027')}" data-field="postponement.text" placeholder="Ex. Reporté en T1 2027" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+            <input type="text" value="${escapeHtml(p.postponement?.text || 'Reporté')}" data-field="postponement.text" placeholder="Ex. Reporté en T1 2027" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
           </div>
           <div>
-            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur</label>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur fond</label>
             <input type="color" data-field="postponement.color" value="${p.postponement?.color || '#FB923C'}" style="width:100%; height:32px; border:1px solid var(--border); border-radius:4px; cursor:pointer">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur texte</label>
+            <input type="color" data-field="postponement.textColor" value="${p.postponement?.textColor || '#333333'}" style="width:100%; height:32px; border:1px solid var(--border); border-radius:4px; cursor:pointer">
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Taille police (px)</label>
+            <div style="display:flex; align-items:center; gap:6px">
+              <input type="range" min="8" max="32" value="${p.postponement?.fontSize || 16}" data-field="postponement.fontSize" style="flex:1">
+              <span style="font-size:11px; min-width:30px">${p.postponement?.fontSize || 16}px</span>
+            </div>
           </div>
           <div>
             <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Transparence (%)</label>
@@ -4513,11 +4607,33 @@ function renderProjectsTab() {
             </div>
           </div>
           <div>
-            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Position</label>
-            <select data-field="postponement.position" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
-              <option value="top" ${p.postponement?.position === 'top' ? 'selected' : ''}>↑ Haut</option>
-              <option value="center" ${(p.postponement?.position === 'center' || !p.postponement?.position) ? 'selected' : ''}>↔ Centre</option>
-              <option value="bottom" ${p.postponement?.position === 'bottom' ? 'selected' : ''}>↓ Bas</option>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Hauteur</label>
+            <div style="display:flex; align-items:center; gap:6px">
+              <input type="range" min="20" max="200" value="${p.postponement?.height || 60}" data-field="postponement.height" style="flex:1">
+              <span style="font-size:11px; min-width:45px">${p.postponement?.height || 60}px</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Auto-hauteur</label>
+            <label style="display:flex; align-items:center; gap:6px; margin:0">
+              <input type="checkbox" data-field="postponement.heightAuto" ${p.postponement?.heightAuto ? 'checked' : ''} style="cursor:pointer">
+              <span style="font-size:11px">Ajuster à la ligne</span>
+            </label>
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Align. vertical</label>
+            <select data-field="postponement.alignmentVertical" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+              <option value="top" ${p.postponement?.alignmentVertical === 'top' ? 'selected' : ''}>↑ Haut</option>
+              <option value="center" ${(p.postponement?.alignmentVertical === 'center' || !p.postponement?.alignmentVertical) ? 'selected' : ''}>↔ Centre</option>
+              <option value="bottom" ${p.postponement?.alignmentVertical === 'bottom' ? 'selected' : ''}>↓ Bas</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Align. horizontal</label>
+            <select data-field="postponement.alignmentHorizontal" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+              <option value="left" ${p.postponement?.alignmentHorizontal === 'left' ? 'selected' : ''}>⬅ Gauche</option>
+              <option value="center" ${(p.postponement?.alignmentHorizontal === 'center' || !p.postponement?.alignmentHorizontal) ? 'selected' : ''}>↔ Centre</option>
+              <option value="right" ${p.postponement?.alignmentHorizontal === 'right' ? 'selected' : ''}>➡ Droite</option>
             </select>
           </div>
         </div>
@@ -4551,6 +4667,82 @@ function renderDomainsTab() {
         ${colorField('Fond alterné', 'bgColorAlt', d.bgColorAlt, true)}
         ${colorField('Couleur titre domaine', 'strongColor', d.strongColor, true)}
       </div>
+
+      <!-- Postponement capsule section for domain -->
+      <div class="project-section-title">📍 Reporté à [date]</div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; padding:8px; background:var(--panel); border-radius:6px">
+        <label style="display:flex; align-items:center; gap:6px; margin:0; flex:1">
+          <input type="checkbox" data-field="postponement.enabled" ${d.postponement?.enabled ? 'checked' : ''} style="cursor:pointer">
+          <span>Afficher le badge "Reporté"</span>
+        </label>
+      </div>
+      ${d.postponement?.enabled ? `
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:8px; background:var(--panel); border-radius:6px">
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Texte</label>
+          <input type="text" value="${escapeHtml(d.postponement?.text || 'Reporté')}" data-field="postponement.text" placeholder="Ex. Reporté en T1 2027" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur fond</label>
+          <input type="color" data-field="postponement.color" value="${d.postponement?.color || '#FB923C'}" style="width:100%; height:32px; border:1px solid var(--border); border-radius:4px; cursor:pointer">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Couleur texte</label>
+          <input type="color" data-field="postponement.textColor" value="${d.postponement?.textColor || '#333333'}" style="width:100%; height:32px; border:1px solid var(--border); border-radius:4px; cursor:pointer">
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Taille police (px)</label>
+          <div style="display:flex; align-items:center; gap:6px">
+            <input type="range" min="8" max="32" value="${d.postponement?.fontSize || 16}" data-field="postponement.fontSize" style="flex:1">
+            <span style="font-size:11px; min-width:30px">${d.postponement?.fontSize || 16}px</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Transparence (%)</label>
+          <div style="display:flex; align-items:center; gap:6px">
+            <input type="range" min="0" max="100" value="${d.postponement?.opacity || 70}" data-field="postponement.opacity" style="flex:1">
+            <span style="font-size:11px; min-width:30px">${d.postponement?.opacity || 70}%</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Largeur (%)</label>
+          <div style="display:flex; align-items:center; gap:6px">
+            <input type="range" min="0" max="100" value="${d.postponement?.width || 100}" data-field="postponement.width" style="flex:1">
+            <span style="font-size:11px; min-width:30px">${d.postponement?.width || 100}%</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Hauteur</label>
+          <div style="display:flex; align-items:center; gap:6px">
+            <input type="range" min="20" max="200" value="${d.postponement?.height || 60}" data-field="postponement.height" style="flex:1">
+            <span style="font-size:11px; min-width:45px">${d.postponement?.height || 60}px</span>
+          </div>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Auto-hauteur</label>
+          <label style="display:flex; align-items:center; gap:6px; margin:0">
+            <input type="checkbox" data-field="postponement.heightAuto" ${d.postponement?.heightAuto ? 'checked' : ''} style="cursor:pointer">
+            <span style="font-size:11px">Ajuster à la ligne</span>
+          </label>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Align. vertical</label>
+          <select data-field="postponement.alignmentVertical" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+            <option value="top" ${d.postponement?.alignmentVertical === 'top' ? 'selected' : ''}>↑ Haut</option>
+            <option value="center" ${(d.postponement?.alignmentVertical === 'center' || !d.postponement?.alignmentVertical) ? 'selected' : ''}>↔ Centre</option>
+            <option value="bottom" ${d.postponement?.alignmentVertical === 'bottom' ? 'selected' : ''}>↓ Bas</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; font-weight:600; color:var(--text-soft); margin-bottom:4px">Align. horizontal</label>
+          <select data-field="postponement.alignmentHorizontal" style="width:100%; padding:6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:var(--bg); color:var(--text)">
+            <option value="left" ${d.postponement?.alignmentHorizontal === 'left' ? 'selected' : ''}>⬅ Gauche</option>
+            <option value="center" ${(d.postponement?.alignmentHorizontal === 'center' || !d.postponement?.alignmentHorizontal) ? 'selected' : ''}>↔ Centre</option>
+            <option value="right" ${d.postponement?.alignmentHorizontal === 'right' ? 'selected' : ''}>➡ Droite</option>
+          </select>
+        </div>
+      </div>
+      ` : ''}
     </div>`;
   });
   html += `<button class="add-row" data-action="add-domain">+ Ajouter un projet</button>
@@ -5728,22 +5920,34 @@ function attachDrawerHandlers() {
           if (t.type === 'checkbox') {
             p.postponement.enabled = t.checked;
           }
-        } else if (subField === 'opacity' || subField === 'width') {
-          // Convert to number for opacity and width
+        } else if (subField === 'heightAuto') {
+          if (t.type === 'checkbox') {
+            p.postponement.heightAuto = t.checked;
+          }
+        } else if (subField === 'opacity' || subField === 'width' || subField === 'fontSize' || subField === 'height') {
+          // Convert to number
           const num = parseFloat(value);
           if (isNaN(num) || num < 0) {
             delete p.postponement[subField];
           } else {
-            p.postponement[subField] = Math.min(100, Math.max(0, num));
+            p.postponement[subField] = Math.min(subField === 'fontSize' ? 32 : subField === 'height' ? 200 : 100, Math.max(subField === 'fontSize' ? 8 : subField === 'height' ? 20 : 0, num));
           }
           // Update displayed value next to range slider
           const parentDiv = t.closest('div');
           if (parentDiv) {
             const displaySpan = parentDiv.querySelector('span');
-            if (displaySpan) displaySpan.textContent = p.postponement[subField] + '%';
+            if (displaySpan) {
+              if (subField === 'fontSize') {
+                displaySpan.textContent = p.postponement[subField] + 'px';
+              } else if (subField === 'height') {
+                displaySpan.textContent = p.postponement[subField] + 'px';
+              } else {
+                displaySpan.textContent = p.postponement[subField] + '%';
+              }
+            }
           }
         } else {
-          // text, color, position
+          // text, color, textColor, alignmentVertical, alignmentHorizontal
           if (value === '' || value === null || value === undefined) {
             delete p.postponement[subField];
           } else {
@@ -5767,7 +5971,59 @@ function attachDrawerHandlers() {
       const row = t.closest('[data-domain-idx]');
       if (!row) return;
       const d = state.domains[parseInt(row.dataset.domainIdx)];
-      setOrDelete(d, field, value);
+
+      // Handle postponement fields for domains
+      if (field.startsWith('postponement.')) {
+        d.postponement = d.postponement || {};
+        const subField = field.split('.')[1];
+
+        if (subField === 'enabled') {
+          if (t.type === 'checkbox') {
+            d.postponement.enabled = t.checked;
+          }
+        } else if (subField === 'heightAuto') {
+          if (t.type === 'checkbox') {
+            d.postponement.heightAuto = t.checked;
+          }
+        } else if (subField === 'opacity' || subField === 'width' || subField === 'fontSize' || subField === 'height') {
+          // Convert to number
+          const num = parseFloat(value);
+          if (isNaN(num) || num < 0) {
+            delete d.postponement[subField];
+          } else {
+            d.postponement[subField] = Math.min(subField === 'fontSize' ? 32 : subField === 'height' ? 200 : 100, Math.max(subField === 'fontSize' ? 8 : subField === 'height' ? 20 : 0, num));
+          }
+          // Update displayed value next to range slider
+          const parentDiv = t.closest('div');
+          if (parentDiv) {
+            const displaySpan = parentDiv.querySelector('span');
+            if (displaySpan) {
+              if (subField === 'fontSize') {
+                displaySpan.textContent = d.postponement[subField] + 'px';
+              } else if (subField === 'height') {
+                displaySpan.textContent = d.postponement[subField] + 'px';
+              } else {
+                displaySpan.textContent = d.postponement[subField] + '%';
+              }
+            }
+          }
+        } else {
+          // text, color, textColor, alignmentVertical, alignmentHorizontal
+          if (value === '' || value === null || value === undefined) {
+            delete d.postponement[subField];
+          } else {
+            d.postponement[subField] = value;
+          }
+        }
+
+        // Clean up if all postponement fields are empty
+        if (Object.keys(d.postponement).filter(k => d.postponement[k]).length === 0) {
+          delete d.postponement;
+        }
+      } else {
+        setOrDelete(d, field, value);
+      }
+
       if (t.type === 'color') {
         const sibling = t.parentElement.querySelector(`input[type="text"][data-field="${field}"]`);
         if (sibling) sibling.value = value;
