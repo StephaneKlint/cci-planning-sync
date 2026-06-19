@@ -3,21 +3,57 @@ const { createServer } = require('http');
 const { Server: SocketIOServer } = require('socket.io');
 const cors = require('cors');
 const compression = require('compression');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 require('dotenv').config();
+
+const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+  : null;
 
 const app = express();
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: ALLOWED_ORIGINS ?? '*', methods: ['GET', 'POST'] },
   transports: ['websocket', 'polling']
 });
 
 // Middleware
 app.use(compression());
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.static('public')); // Serve static files from public/
+app.use(helmet({
+  contentSecurityPolicy: false,    // évite de casser les assets statiques (public/)
+  crossOriginEmbedderPolicy: false // évite de casser Socket.IO
+}));
+app.use(cors({
+  origin: ALLOWED_ORIGINS ?? '*',
+  credentials: false
+}));
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes, réessayez dans 15 minutes' }
+});
+const mutationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de modifications, réessayez dans 15 minutes' }
+});
+app.use('/api', apiLimiter);
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
+    return mutationLimiter(req, res, next);
+  }
+  next();
+});
+
+app.use(express.json({ limit: '5mb' }));
+app.use(express.static('public'));
 
 // PostgreSQL Connection Pool
 const pool = new Pool({
@@ -89,7 +125,6 @@ async function initDatabase() {
 const connectedUsers = new Map();
 
 io.on('connection', (socket) => {
-  console.log(`[WS] Client connected: ${socket.id}`);
 
   socket.on('join-planning', ({ planningId, deviceId }) => {
     socket.join(`planning-${planningId}`);
@@ -103,7 +138,6 @@ io.on('connection', (socket) => {
       deviceId,
       count: countInRoom
     });
-    console.log(`[WS] ${deviceId} joined planning ${planningId} (${countInRoom} users in room)`);
   });
 
   socket.on('planning-modified', async ({ planningId, version, device, data }) => {
@@ -132,7 +166,6 @@ io.on('connection', (socket) => {
         timestamp: new Date().toISOString()
       });
 
-      console.log(`[Sync] Backup saved v${version} for ${planningId}`);
     } catch (err) {
       console.error('[Sync] Error:', err.message);
       socket.emit('sync-error', { error: err.message });
@@ -403,9 +436,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Initialize database tables (force initialization)
+// Initialize database tables — protégé par INIT_SECRET
 app.post('/api/init-db', async (req, res) => {
   try {
+    const secret = process.env.INIT_SECRET;
+    if (!secret || req.headers['x-init-secret'] !== secret) {
+      return res.status(403).json({ error: 'Accès refusé' });
+    }
     await initDatabase();
     res.json({ success: true, message: 'Database initialized' });
   } catch (err) {

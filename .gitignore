@@ -9,3 +9,7 @@ node_modules/
 dist/
 build/
 .vercel/
+*.pem
+*.key
+credentials*
+secrets*
