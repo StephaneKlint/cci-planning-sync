@@ -61,6 +61,21 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Error logging to app_errors table (fire-and-forget)
+async function logError({ source, message, details, userId, statusCode, level = 'error' }) {
+  try {
+    console.error(`[${source}] ${message}`, details ?? '');
+    if (!process.env.DATABASE_URL) return;
+    await pool.query(
+      `INSERT INTO app_errors (source, level, message, details, user_id, status_code)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
+      [source, level, message, details ? JSON.stringify(details) : null, userId ?? null, statusCode ?? null]
+    );
+  } catch {
+    // never let logging break the app
+  }
+}
+
 // Test DB connection and initialize tables
 if (process.env.DATABASE_URL) {
   pool.query('SELECT NOW()', async (err) => {
@@ -491,6 +506,19 @@ app.get('/', (req, res) => {
 // App intégrée - CCI Planning 2026
 app.get('/app', (req, res) => {
   res.sendFile(require('path').join(__dirname, 'public', 'app.html'));
+});
+
+// Global error handler — logs to app_errors then returns 500
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const source = `sync:${req.method}:${req.path}`;
+  logError({
+    source,
+    message: err.message ?? 'Erreur interne',
+    details: { stack: err.stack, body: req.body },
+    statusCode: err.status ?? 500,
+  }).catch(() => {});
+  res.status(err.status ?? 500).json({ error: err.message ?? 'Erreur interne' });
 });
 
 // 404 handler
